@@ -51,7 +51,7 @@ else:
 
         # Generate a streaming response.
         response_stream = client.models.generate_content_stream(
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",
             contents=contents,
         )
 
