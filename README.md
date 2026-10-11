@@ -43,6 +43,10 @@ Streamlit と Google GenAI SDK (`google-genai`) を用いて構築されてお�
 
 * **マルチモデル自動フォールバック**: `gemini-3.5-flash-lite`（初期値） / `gemini-3.8-flash` / `gemini-3.1-pro` に対応し、API利用上限（HTTP 429）やサーバー混雑（HTTP 503）が発生した際は自動で予備モデルへ切り替えます。
 
+## 🌐 ご利用方法
+
+以下のリンクから直接ブラウザ上でご利用いただけます（インストール不要）。  
+👉 [お悩み相談室を開く](https://chatbot-cgj2odx7a1.streamlit.app)
 ---
 
 ## 📁 ファイル構成
@@ -56,7 +60,4 @@ Streamlit と Google GenAI SDK (`google-genai`) を用いて構築されてお�
 ├── Learning how to learn.pdf               # 知識データ3：認知神経科学に基づく学習・記憶・ノート作成戦略
 └── README.md                               # 本ドキュメント
 
-## 🌐 ご利用方法
 
-以下のリンクから直接ブラウザ上でご利用いただけます（インストール不要）。  
-👉 [お悩み相談室を開く](https://chatbot-cgj2odx7a1.streamlit.app)
