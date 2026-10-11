@@ -55,3 +55,8 @@ Streamlit と Google GenAI SDK (`google-genai`) を用いて構築されてお�
 ├── parent_guide_brain_science_learning.pdf # 知識データ2：脳科学と学習科学に基づく保護者ガイドライン
 ├── Learning how to learn.pdf               # 知識データ3：認知神経科学に基づく学習・記憶・ノート作成戦略
 └── README.md                               # 本ドキュメント
+
+## 🌐 ご利用方法
+
+以下のリンクから直接ブラウザ上でご利用いただけます（インストール不要）。  
+👉 [お悩み相談室を開く](https://chatbot-cgj2odx7a1.streamlit.app)
