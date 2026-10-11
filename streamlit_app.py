@@ -23,13 +23,13 @@ st.set_page_config(page_title="お悩み相談室", page_icon="💬", layout="ce
 st.title("💬 お悩み相談室")
 
 # ==========================================
-# 2. 事前ガードレール（個人情報保護・AIの境界明示）
+# 2. 事前ガードレール（通常時はメールアドレスを表示しない）
 # ==========================================
 with st.container(border=True):
     st.markdown(
         "🔒 **安心してご相談いただくためのお願い**\n"
         "- **個人情報の保護**：お子様の実名（フルネームや下のお名前）、学校名、クラスなどは入力しないでください（検知された場合は自動ブロックされます）。「小5の母です」「長男が」など一般的な表現でご相談ください。\n"
-        "- **この相談室の役割**：AIは家庭での工夫を一緒に探す「壁打ち相手（初期スクリーニング）」です。医療・心理的診断や緊急性の高いご相談については、人間の専門窓口（櫻井宛：`k.sakurai@aiwa-learning.com`）へおつなぎします。"
+        "- **この相談室の役割**：AIは家庭での工夫を一緒に探す「壁打ち相手（初期スクリーニング）」です。医療・心理的診断や緊急性の高いご相談については、人間の専門窓口へおつなぎします。"
     )
 
 # ==========================================
@@ -79,6 +79,10 @@ if "audit_logs" not in st.session_state:
 if "action_plan" not in st.session_state:
     st.session_state.action_plan = ""
 
+if "escalation_triggered" not in st.session_state:
+    # エスカレーションが必要になった時のみ True にし、連絡先を表示する
+    st.session_state.escalation_triggered = False
+
 HIGH_RISK_KEYWORDS = [
     "死にたい", "消えたい", "自殺", "自傷", "リストカット", "虐待", "暴力",
     "うつ病", "発達障害", "ADHD", "ASD", "LD", "学習障害", "不登校", "いじめ",
@@ -114,7 +118,7 @@ def check_personal_info(text: str) -> tuple[bool, str]:
     if re.search(school_pattern, text):
         return True, "具体的な学校名やクラス名が含まれている可能性があります。「小5」「中学生」などの表現に変えてご入力ください。"
 
-    # 2. 明示的な名前紹介パターン（「名前は〇〇」「〇〇という名前」）
+    # 2. 明示的な名前紹介パターン（「名前は〇〇」「本名は〇〇」）
     explicit_name_pattern = r"(?:名前は|本名は|氏名は)\s*([一-龥ぁ-んァ-ヶ]{2,8}?)(?:です|といいます|と言います|と申します|といい|、|。|$)"
     match_exp = re.search(explicit_name_pattern, text)
     if match_exp:
@@ -168,9 +172,9 @@ COUNSELOR_GUIDELINES = f"""
    もし親御さんの入力文の中に、明確な「人物の実名（苗字・下の名前・フルネーム、例：『小川環』『太郎』『花子』など）」や「具体的な学校名・塾名」が含まれていると文脈から判断した場合は、相談への回答を一切行わず、必ず文頭に **`【個人情報ブロック】`** という文字列を出力し、「プライバシー保護のため、お子様の実名は伏せて『お子さん』『息子』『小5の子ども』のようにご入力くださいね」とだけ案内してください。
    （※「勉強時間」「集中力」「宿題」などの一般名詞や、「Aさん」などのアルファベット仮名は実名ではないため絶対にブロックしないでください）
 
-4. 委任禁止領域（Never-Delegate）と専門窓口へのエスカレーション：
-   医療・発達障害の診断、深刻なメンタルヘルス不調、自傷他害の恐れ、深刻ないじめや虐待など、AIが独断で判断を下すと重大なリスクがある相談については、決してAIだけで解決・診断しようとしないでください。
-   親御さんのつらいお気持ちを温かく受け止めた上で、「こうした大切なお悩みは、私（AI）だけで判断せず、人間が丁寧にお伺いすることが大切です。ぜひ当相談室の専門窓口である **櫻井（k.sakurai@aiwa-learning.com）** まで直接ご連絡・ご相談ください」と明確にご案内してください。
+4. 委任禁止領域（Never-Delegate）と専門窓口へのエスカレーション（必要な時のみ表示）：
+   ・通常の家庭学習や日常の子育て相談では、専門窓口の連絡先（メールアドレス）は一切出さないでください。
+   ・医療・発達障害の診断、深刻なメンタルヘルス不調、自傷他害の恐れ、深刻ないじめや虐待、長期の不登校など、AIが独断で判断を下すと重大なリスクがある相談（エスカレーションが必要なケース）に該当した時のみ、決してAIだけで解決・診断しようとせず、親御さんのつらいお気持ちを温かく受け止めた上で、「こうした大切なお悩みは、私（AI）だけで判断せず、人間が丁寧にお伺いすることが大切です。ぜひ当相談室の専門窓口である **櫻井（k.sakurai@aiwa-learning.com）** まで直接ご連絡・ご相談ください」と初めてご案内してください。
 
 5. 専門用語は「平易な解説・日常の比喩」と必ずセットで使う（1回につき1〜2個まで）：
    適切な場面では専門用語（ワーキングメモリ、認知オーバーロード、想起練習、分散学習、インターリーブ、流暢性の錯覚、集中モードと拡散モード、レースカー脳とハイカー脳、手続き的記憶と宣言的記憶、ポモドーロ・テクニック、チャンク化、島皮質、BDNF、バリデーション、快楽適応、セイバリング、WOOPモデル、If-Thenプランなど）を使用して構いませんが、必ず直後に「小学生でもイメージできる日常の例えや平易な解説」を添えてください。
@@ -192,6 +196,7 @@ TURN_REMINDER = """
 【システム最優先ルール（厳守）】
 ・お子さんが男の子であっても「〜くん」「〜ちゃん」「〜君」は絶対に使用禁止です。必ず「お子さん」または「〜さん」と表現してください。
 ・もし今回のユーザー発言に具体的な人物の実名（例：小川環、太郎など）が含まれている場合のみ、相談に答えず文頭に必ず `【個人情報ブロック】` と出力してください（一般名詞はブロックしないこと）。
+・専門窓口（k.sakurai@aiwa-learning.com）の案内は、医療・発達診断・深刻ないじめや不登校・自傷他害などエスカレーションが必要な深刻な相談の時だけ出力し、通常の相談では一切表示しないでください。
 """
 
 AVAILABLE_MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.1-pro"]
@@ -206,18 +211,21 @@ with st.sidebar:
     else:
         st.caption("対話を通じて「もし〜なら、〜する」という具体的な作戦が決まると、ここに自動記録されます。")
 
+    # エスカレーションが発生した時のみ、サイドバーに専門相談窓口を表示
+    if st.session_state.escalation_triggered:
+        st.divider()
+        st.error(
+            "📩 **専門相談窓口のご案内**\n\n"
+            "現在のご相談内容は、AIではなく専門の担当者が直接お伺いいたします。以下までご連絡ください。\n\n"
+            "**担当：櫻井**\n\n"
+            "[k.sakurai@aiwa-learning.com](mailto:k.sakurai@aiwa-learning.com)"
+        )
+
     if st.button("🗑️ 会話履歴をクリアする", use_container_width=True):
         st.session_state.messages = []
         st.session_state.action_plan = ""
+        st.session_state.escalation_triggered = False
         st.rerun()
-
-    st.divider()
-    st.markdown(
-        "📩 **個別・専門相談窓口**\n"
-        "AIでは判断が難しいご相談や、直接のサポートをご希望の場合は以下へご連絡ください。\n\n"
-        "**担当：櫻井**\n"
-        "[k.sakurai@aiwa-learning.com](mailto:k.sakurai@aiwa-learning.com)"
-    )
 
     st.divider()
 
@@ -293,6 +301,12 @@ else:
                         st.rerun()
                     if current_fb != "未評価":
                         fb_col3.caption(f"評価記録済: {current_fb}")
+
+    # エスカレーション発動時はチャット下部にも案内バナーを表示
+    if st.session_state.escalation_triggered:
+        st.info(
+            "📩 **専門窓口のご案内**：ご相談内容に専門的なサポートが必要な事項が含まれているため、人間の担当窓口をご案内しております。お気軽に **櫻井（[k.sakurai@aiwa-learning.com](mailto:k.sakurai@aiwa-learning.com)）** までご連絡ください。"
+        )
 
     # ==========================================
     # 8. ユーザー入力・個人情報ブロック・Gemini API呼び出し
@@ -449,7 +463,10 @@ else:
                         extracted_plan = match.group(1).strip()
                         st.session_state.action_plan = extracted_plan
 
+                # エスカレーションが発生したか判定し、発生時のみ連絡先表示フラグをONにする
                 escalated = is_high_risk or ("k.sakurai@aiwa-learning.com" in full_response)
+                if escalated:
+                    st.session_state.escalation_triggered = True
 
                 log_index = len(st.session_state.audit_logs)
                 st.session_state.audit_logs.append(
