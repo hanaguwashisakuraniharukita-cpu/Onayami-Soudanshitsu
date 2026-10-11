@@ -20,25 +20,21 @@ if not api_key:
 if not api_key:
     st.info("Please add your Gemini API key to continue.", icon="🗝️")
 else:
-    # 前後の不要な空白を除去してクライアント作成
     client = genai.Client(api_key=api_key.strip())
 
-    # 会話履歴の初期化
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # 過去ログの表示
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # ユーザー入力
     if prompt := st.chat_input("What is up?"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Gemini 向けに履歴フォーマットを変換
+        # Gemini 形式のコンテンツ作成
         contents = [
             types.Content(
                 role="model" if m["role"] == "assistant" else "user",
@@ -47,10 +43,11 @@ else:
             for m in st.session_state.messages
         ]
 
+        # 最新の 3.8-flash を明示的に指定
+        # （プレフィックス付き 'models/gemini-3.8-flash' で指定します）
         try:
-            # 正式なモデル名 'gemini-2.5-flash' を指定
             response_stream = client.models.generate_content_stream(
-                model="gemini-2.5-flash",
+                model="models/gemini-3.8-flash",
                 contents=contents,
             )
 
@@ -59,14 +56,16 @@ else:
                     for chunk in response_stream:
                         if chunk.text:
                             yield chunk.text
-                except errors.APIError as stream_err:
-                    yield f"\n\n**APIエラーが発生しました:** {stream_err.message}"
+                except errors.ServerError:
+                    yield "\n\n*(Google サーバー側で一時的な接続混雑が発生しました。もう一度メッセージを送信してください)*"
+                except errors.APIError as e:
+                    yield f"\n\n*(APIエラー: {e.message})*"
 
             with st.chat_message("assistant"):
                 full_response = st.write_stream(stream_generator())
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
         except errors.APIError as e:
-            st.error(f"Gemini API エラー ({e.code}): {e.message}")
+            st.error(f"APIエラーが発生しました: {e.message}")
         except Exception as e:
-            st.error(f"予期しないエラー: {str(e)}")
+            st.error(f"エラー: {str(e)}")
