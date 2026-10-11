@@ -55,8 +55,12 @@ else:
         full_response = ""
         success = False
 
-        try:
-            with st.chat_message("assistant"):
+        with st.chat_message("assistant"):
+            # 待ち時間用の表示枠を作成
+            thinking_placeholder = st.empty()
+            thinking_placeholder.markdown("（・・・今考えています）")
+
+            try:
                 if use_streaming:
                     # ストリーミング実行
                     response_stream = client.models.generate_content_stream(
@@ -67,25 +71,29 @@ else:
                     def stream_generator():
                         for chunk in response_stream:
                             if chunk.text:
+                                # 最初の文字が届いた時点で「（・・・今考えています）」を消去
+                                thinking_placeholder.empty()
                                 yield chunk.text
 
                     full_response = st.write_stream(stream_generator())
                 else:
-                    # 通常生成（ストリーミング不調時の切り分け用）
-                    with st.spinner("生成中..."):
-                        response = client.models.generate_content(
-                            model=selected_model,
-                            contents=contents,
-                        )
-                        full_response = response.text
-                        st.markdown(full_response)
+                    # 通常生成
+                    response = client.models.generate_content(
+                        model=selected_model,
+                        contents=contents,
+                    )
+                    full_response = response.text
+                    # 生成完了後に「（・・・今考えています）」を回答で上書き
+                    thinking_placeholder.markdown(full_response)
 
                 success = True
 
-        except errors.APIError as e:
-            st.error(f"**Gemini API Error [{e.code}]**: {e.message}")
-        except Exception as e:
-            st.error(f"**Error**: {type(e).__name__} - {str(e)}")
+            except errors.APIError as e:
+                thinking_placeholder.empty()
+                st.error(f"**Gemini API Error [{e.code}]**: {e.message}")
+            except Exception as e:
+                thinking_placeholder.empty()
+                st.error(f"**Error**: {type(e).__name__} - {str(e)}")
 
         # 成功した時のみ履歴に追加（エラー文は履歴に保存しない）
         if success and full_response:
