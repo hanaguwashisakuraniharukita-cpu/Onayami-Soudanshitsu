@@ -1,5 +1,6 @@
 import streamlit as st
 from google import genai
+from google.genai import errors
 from google.genai import types
 
 # Show title and description.
@@ -10,8 +11,7 @@ st.write(
     "You can also store the API key in `.streamlit/secrets.toml`."
 )
 
-# Ask user for their Gemini API key via `st.text_input`.
-# Alternatively, check for an API key stored in `.streamlit/secrets.toml`
+# APIキーの取得
 api_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets else None
 
 if not api_key:
@@ -20,27 +20,25 @@ if not api_key:
 if not api_key:
     st.info("Please add your Gemini API key to continue.", icon="🗝️")
 else:
-    # Create a Gemini client.
-    client = genai.Client(api_key=api_key)
+    # 前後の不要な空白を除去してクライアント作成
+    client = genai.Client(api_key=api_key.strip())
 
-    # Create a session state variable to store the chat messages.
+    # 会話履歴の初期化
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display the existing chat messages via `st.chat_message`.
+    # 過去ログの表示
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Create a chat input field.
+    # ユーザー入力
     if prompt := st.chat_input("What is up?"):
-        # Store and display the current prompt.
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Convert chat history to Gemini's Content format.
-        # Note: Gemini requires the assistant role to be named 'model'.
+        # Gemini 向けに履歴フォーマットを変換
         contents = [
             types.Content(
                 role="model" if m["role"] == "assistant" else "user",
@@ -49,19 +47,26 @@ else:
             for m in st.session_state.messages
         ]
 
-        # Generate a streaming response.
-        response_stream = client.models.generate_content_stream(
-            model="gemini-3.8-flash",
-            contents=contents,
-        )
+        try:
+            # 正式なモデル名 'gemini-2.5-flash' を指定
+            response_stream = client.models.generate_content_stream(
+                model="gemini-2.5-flash",
+                contents=contents,
+            )
 
-        # Helper generator to yield text chunks to st.write_stream.
-        def stream_generator():
-            for chunk in response_stream:
-                if chunk.text:
-                    yield chunk.text
+            def stream_generator():
+                try:
+                    for chunk in response_stream:
+                        if chunk.text:
+                            yield chunk.text
+                except errors.APIError as stream_err:
+                    yield f"\n\n**APIエラーが発生しました:** {stream_err.message}"
 
-        # Stream the response to the chat, then store it in session state.
-        with st.chat_message("assistant"):
-            full_response = st.write_stream(stream_generator())
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+            with st.chat_message("assistant"):
+                full_response = st.write_stream(stream_generator())
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+        except errors.APIError as e:
+            st.error(f"Gemini API エラー ({e.code}): {e.message}")
+        except Exception as e:
+            st.error(f"予期しないエラー: {str(e)}")
