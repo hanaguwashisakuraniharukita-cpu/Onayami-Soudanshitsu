@@ -37,7 +37,7 @@ else:
             st.markdown(message["content"])
 
     # ユーザー入力
-    if prompt := st.chat_input("What is up?"):
+    if prompt := st.chat_input("今日はどのようなご相談ですか"):
         # 画面表示と履歴保存
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
