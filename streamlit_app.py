@@ -3,7 +3,7 @@ from google import genai
 from google.genai import errors
 from google.genai import types
 
-st.title("💬 Chatbot")
+st.title("💬 お悩み相談室")
 
 # サイドバー設定
 with st.sidebar:
@@ -14,7 +14,7 @@ with st.sidebar:
         index=0,
     )
     use_streaming = st.checkbox("ストリーミング表示を有効にする", value=True)
-    if st.button("🗑️ 会話履歴をクリア"):
+    if st.button("🗑️ 会話履歴をクリアする"):
         st.session_state.messages = []
         st.rerun()
 
