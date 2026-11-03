@@ -11,7 +11,7 @@ from google.genai import errors
 from google.genai import types
 
 # ==========================================
-# 1. 日本標準時（JST）へのタイムゾーン設定
+# 1. 日本標準時（JST）設定 ＆ スマホ対応ページ設定
 # ==========================================
 os.environ["TZ"] = "Asia/Tokyo"
 if hasattr(time, "tzset"):
@@ -19,21 +19,52 @@ if hasattr(time, "tzset"):
 
 JST = ZoneInfo("Asia/Tokyo")
 
-st.set_page_config(page_title="お悩み相談室", page_icon="💬", layout="centered")
-st.title("💬 お悩み相談室")
+# スマホで画面が隠れないよう initial_sidebar_state="collapsed" を指定
+st.set_page_config(
+    page_title="お悩み相談室",
+    page_icon="💬",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
+
+# スマホ用カスタムCSS（余白最適化・ボタンの押しやすさ・iOS自動ズーム防止）
+st.markdown(
+    """
+    <style>
+    /* メイン画面の余白をスマホ向けに最適化 */
+    .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 4rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        max-width: 720px;
+    }
+    /* スマホでのタイトル文字サイズ調整 */
+    h1 {
+        font-size: 1.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    /* チャット吹き出しのテキストを読みやすく */
+    .stChatMessage {
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
+    /* タップしやすいボタンサイズ確保 */
+    .stButton > button {
+        min-height: 2.6rem;
+        border-radius: 8px;
+    }
+    /* iPhone(iOS)で入力欄タップ時に画面が勝手に拡大されるのを防ぐ(16px以上) */
+    textarea, input {
+        font-size: 16px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ==========================================
-# 2. 事前ガードレール（通常時はメールアドレスを表示しない）
-# ==========================================
-with st.container(border=True):
-    st.markdown(
-        "🔒 **安心してご相談いただくためのお願い**\n"
-        "- **個人情報の保護**：お子様の実名（フルネームや下のお名前）、学校名、クラスなどは入力しないでください（検知された場合は自動ブロックされます）。「小5の母です」「長男が」など一般的な表現でご相談ください。\n"
-        "- **この相談室の役割**：AIは家庭での工夫を一緒に探す「壁打ち相手（初期スクリーニング）」です。医療・心理的診断や緊急性の高いご相談については、人間の専門窓口へおつなぎします。"
-    )
-
-# ==========================================
-# 3. 3つのPDF知識データの読み込み（キャッシュ）
+# 2. 3つのPDF知識データの読み込み（キャッシュ）
 # ==========================================
 PDF_FILES = [
     "happy_parenting_wellbeing_guide.pdf",
@@ -68,7 +99,7 @@ else:
     time_context = "現在は【夜遅い時間帯（22時以降〜深夜）】です。脳の作業机（ワーキングメモリ）も意志力も消耗しています。今夜は難しい反省会や詰め込みは避け、記憶の定着と脳のお掃除（老廃物除去）のためにしっかり睡眠（7〜9時間）をとることを最優先で労ってください。"
 
 # ==========================================
-# 4. セッション状態の初期化 ＆ 検知・変換関数
+# 3. セッション状態の初期化 ＆ 検知・変換関数
 # ==========================================
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -80,7 +111,6 @@ if "action_plan" not in st.session_state:
     st.session_state.action_plan = ""
 
 if "escalation_triggered" not in st.session_state:
-    # エスカレーションが必要になった時のみ True にし、連絡先を表示する
     st.session_state.escalation_triggered = False
 
 HIGH_RISK_KEYWORDS = [
@@ -92,7 +122,6 @@ HIGH_RISK_KEYWORDS = [
 def check_high_risk(text: str) -> bool:
     return any(kw in text for kw in HIGH_RISK_KEYWORDS)
 
-# 「〜の母」「〜ちゃん/くん」で除外する一般語リスト
 SAFE_ROLE_WORDS = {
     "お子", "おこ", "お母", "お父", "お兄", "お姉", "弟", "妹", "姉", "兄",
     "おじい", "おばあ", "お嬢", "お坊", "赤", "皆", "みな", "たく", "沢",
@@ -109,29 +138,21 @@ SAFE_ROLE_WORDS = {
 }
 
 def check_personal_info(text: str) -> tuple[bool, str]:
-    """
-    確実に個人情報と判別できるパターン（学校名、クラス名、明示的な名乗り、くん/ちゃん付け）を事前ブロックする。
-    ※「子どもの勉強時間が」のような一般名詞の所有格は誤爆を防ぐためここでは弾かず、AIの文脈判定に委ねる。
-    """
-    # 1. 学校名・クラス名のパターン（〇〇小学校、〇年〇組 など）
     school_pattern = r"[一-龥ぁ-んァ-ヶー]{2,}(?:小学校|中学校|高等学校|高校|学園|幼稚園|保育園)|[1-6１-６一二三四五六]年[1-9１-９一二三四五六七八九十A-Za-z]組"
     if re.search(school_pattern, text):
         return True, "具体的な学校名やクラス名が含まれている可能性があります。「小5」「中学生」などの表現に変えてご入力ください。"
 
-    # 2. 明示的な名前紹介パターン（「名前は〇〇」「本名は〇〇」）
     explicit_name_pattern = r"(?:名前は|本名は|氏名は)\s*([一-龥ぁ-んァ-ヶ]{2,8}?)(?:です|といいます|と言います|と申します|といい|、|。|$)"
     match_exp = re.search(explicit_name_pattern, text)
     if match_exp:
         return True, f"お名前（「{match_exp.group(1)}」）が含まれている可能性があります。プライバシー保護のため、お名前は伏せてご入力ください。"
 
-    # 3. 「〇〇の母/父/親です」パターン（例：「小5の小川環の母です」→「小川環」を検知）
     parent_of_pattern = r"(?:の|^|\s|、|。)([一-龥ぁ-んァ-ヶ]{2,8})の(?:母|父|親|保護者|ママ|パパ|母親|父親)"
     for match in re.finditer(parent_of_pattern, text):
         candidate = match.group(1)
         if candidate not in SAFE_ROLE_WORDS and not candidate.endswith(("の子", "の子供", "の子ども", "の息子", "の娘", "の生徒", "の児童")):
             return True, f"お子様のお名前（「{candidate}」）が含まれている可能性があります。プライバシー保護のため、実名は伏せて「小5の母です」「長男の母です」のようにご入力ください。"
 
-    # 4. 敬称付きの名前パターン（〇〇くん、〇〇ちゃん、〇〇君）
     honorific_pattern = r"([一-龥ぁ-んァ-ヶ]{1,6})(くん|ちゃん|君)"
     for match in re.finditer(honorific_pattern, text):
         prefix = match.group(1)
@@ -141,16 +162,12 @@ def check_personal_info(text: str) -> tuple[bool, str]:
     return False, ""
 
 def enforce_san_honorific(text: str) -> str:
-    """
-    AIの出力テキスト内に「〜くん」「〜ちゃん」「〜君」が含まれていた場合、
-    プログラム側で強制的に「〜さん」へ置換する（「ちゃんと」「たくさん」等の一般語は保護）。
-    """
     protected = text.replace("ちゃんと", "__CHANTO__").replace("たくさん", "__TAKUSAN__")
     protected = re.sub(r"([一-龥ぁ-んァ-ヶA-Za-z〇◯]+?)(?:くん|ちゃん|君)", r"\1さん", protected)
     return protected.replace("__CHANTO__", "ちゃんと").replace("__TAKUSAN__", "たくさん")
 
 # ==========================================
-# 5. AIの対話・ガバナンスガイドライン
+# 4. AIの対話・ガバナンスガイドライン
 # ==========================================
 COUNSELOR_GUIDELINES = f"""
 現在の日本時間: {current_time_str}
@@ -182,7 +199,7 @@ COUNSELOR_GUIDELINES = f"""
 6. 「指示（Telling）」ではなく「一緒に作戦を立てる（We Do）」姿勢で1つずつ質問する：
    最初から解決策を長々とまとめて出力しないでください。
    ・ステップ1（感情の受容）：まず親御さんの気持ち（「それは心配になりますよね」「毎日本当にお疲れ様です」など）を肯定・受容（バリデーション）してください。
-   ・ステップ2（1問1答での状況把握）：状況を把握するための質問を【1回の返答につき1つだけ】投げかけてください（性別が不明な場合は性別の確認を行い、1回の返答は3〜6文程度に抑えてください）。
+   ・ステップ2（1問1答での状況把握）：状況を把握するための質問を【1回の返答につき1つだけ】投げかけてください（性別が不明な場合は性別の確認を行い、1回の返答はスマホでも読みやすいよう3〜5文程度にコンパクトに抑えてください）。
    ・ステップ3（共同作戦会議とIf-Thenプラン）：数回のやり取りで状況が見えてきたら、「何がハードルになっていそうか（障害）」を一緒に考え、「もし［きっかけ］が起きたら、そのときは［小さな行動］をする（If-Thenプラン）」の形で、今日から無理なく試せる作戦を1つ一緒に作ってください。
    ※具体的な「もし〜なら、〜する」の作戦がまとまった時は、返答の最後に以下の形式で1行添えてください：
    【今日の作戦】もし〇〇なら、△△する
@@ -191,7 +208,6 @@ COUNSELOR_GUIDELINES = f"""
    子育てや学習と関係のない話題が出た場合は、1〜2回ほど和やかに会話に付き合った後、自然にお悩み相談の話題へ戻してください。
 """
 
-# 毎ターンの末尾に付与する厳守リマインダー
 TURN_REMINDER = """
 【システム最優先ルール（厳守）】
 ・お子さんが男の子であっても「〜くん」「〜ちゃん」「〜君」は絶対に使用禁止です。必ず「お子さん」または「〜さん」と表現してください。
@@ -200,9 +216,41 @@ TURN_REMINDER = """
 """
 
 AVAILABLE_MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.1-pro"]
+ADMIN_PASSWORD = "ipparu155"
+
+# デフォルト設定値の初期化
+selected_model = AVAILABLE_MODELS[0]
+use_streaming = True
+default_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets else ""
+api_key = default_key
 
 # ==========================================
-# 6. サイドバー（保護者向けメニュー ＆ 折りたたみ管理者メニュー）
+# 5. メイン画面ヘッダー（スマホでも一目でわかる構成）
+# ==========================================
+head_col1, head_col2 = st.columns([7, 3])
+with head_col1:
+    st.title("💬 お悩み相談室")
+with head_col2:
+    if st.session_state.messages:
+        if st.button("🔄 最初から", use_container_width=True, help="会話履歴をクリアします"):
+            st.session_state.messages = []
+            st.session_state.action_plan = ""
+            st.session_state.escalation_triggered = False
+            st.rerun()
+
+# スマホで画面を圧迫しないよう、お願い事項はタップで開閉できるExpanderに収納
+with st.expander("🔒 ご利用前のお願い（タップで確認）", expanded=False):
+    st.markdown(
+        "- **個人情報の保護**：お子様の実名、学校名、クラスなどは入力しないでください（自動ブロックされます）。「小5の母です」「長男が」など一般的な表現でご相談ください。\n"
+        "- **この相談室の役割**：AIは家庭での工夫を一緒に探す「壁打ち相手」です。医療・心理的診断や緊急性の高いご相談は、人間の専門窓口へおつなぎします。"
+    )
+
+# スマホでもサイドバーを開かずに「今日の作戦」が見えるようメイン画面上部に表示
+if st.session_state.action_plan:
+    st.success(f"📝 **今日の作戦メモ**\n\n{st.session_state.action_plan}")
+
+# ==========================================
+# 6. サイドバー（PC向け表示 ＆ パスワード保護付き管理者メニュー）
 # ==========================================
 with st.sidebar:
     st.subheader("📝 今日の作戦メモ")
@@ -211,12 +259,11 @@ with st.sidebar:
     else:
         st.caption("対話を通じて「もし〜なら、〜する」という具体的な作戦が決まると、ここに自動記録されます。")
 
-    # エスカレーションが発生した時のみ、サイドバーに専門相談窓口を表示
     if st.session_state.escalation_triggered:
         st.divider()
         st.error(
             "📩 **専門相談窓口のご案内**\n\n"
-            "現在のご相談内容は、AIではなく専門の担当者が直接お伺いいたします。以下までご連絡ください。\n\n"
+            "現在のご相談内容は、専門の担当者が直接お伺いいたします。以下までご連絡ください。\n\n"
             "**担当：櫻井**\n\n"
             "[k.sakurai@aiwa-learning.com](mailto:k.sakurai@aiwa-learning.com)"
         )
@@ -230,60 +277,75 @@ with st.sidebar:
     st.divider()
 
     with st.expander("🔧 管理者・ガバナンス設定"):
-        selected_model = st.selectbox(
-            "優先モデル選択（上限時は自動切替）",
-            AVAILABLE_MODELS,
-            index=0,
-        )
-        use_streaming = st.checkbox("ストリーミング表示を有効にする", value=True)
+        admin_pass_input = st.text_input("管理者パスワードを入力", value="", type="password")
 
-        default_key = st.secrets.get("GEMINI_API_KEY") if "GEMINI_API_KEY" in st.secrets else ""
-        input_api_key = st.text_input("Gemini API Key (未設定時用)", value="", type="password")
-        api_key = default_key if default_key else input_api_key
-
-        st.markdown("---")
-        st.markdown("📊 **運用テレメトリ（分母除外なし）**")
-        total_logs = len(st.session_state.audit_logs)
-        flagged_logs = sum(
-            1 for log in st.session_state.audit_logs
-            if log["status"] != "OK" or log["risk_escalated"] == "Yes" or log["feedback"] == "👎"
-        )
-        positive_logs = sum(1 for log in st.session_state.audit_logs if log["feedback"] == "👍")
-
-        col1, col2 = st.columns(2)
-        col1.metric("総応答数(分母)", f"{total_logs}件")
-        col2.metric("要確認・滞留", f"{flagged_logs}件")
-        st.caption(f"高評価(👍): {positive_logs}件 / ブロック・エラーもすべて分母に含めて集計")
-
-        if st.session_state.audit_logs:
-            output = io.StringIO()
-            output.write("\ufeff")
-            writer = csv.DictWriter(
-                output,
-                fieldnames=[
-                    "turn_id", "timestamp_jst", "model", "status",
-                    "risk_escalated", "feedback", "action_plan_extracted",
-                    "user_prompt_preview", "assistant_response_preview"
-                ],
+        if admin_pass_input == ADMIN_PASSWORD:
+            st.success("🔓 認証済み")
+            selected_model = st.selectbox(
+                "優先モデル選択（上限時は自動切替）",
+                AVAILABLE_MODELS,
+                index=0,
             )
-            writer.writeheader()
-            writer.writerows(st.session_state.audit_logs)
+            use_streaming = st.checkbox("ストリーミング表示を有効にする", value=True)
 
-            st.download_button(
-                label="📥 監査ログをCSVダウンロード",
-                data=output.getvalue(),
-                file_name=f"audit_log_{now_jst.strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
-                use_container_width=True,
+            input_api_key = st.text_input("Gemini API Key (未設定時用)", value="", type="password")
+            api_key = default_key if default_key else input_api_key
+
+            st.markdown("---")
+            st.markdown("📊 **運用テレメトリ（分母除外なし）**")
+            total_logs = len(st.session_state.audit_logs)
+            flagged_logs = sum(
+                1 for log in st.session_state.audit_logs
+                if log["status"] != "OK" or log["risk_escalated"] == "Yes" or log["feedback"] == "👎"
             )
+            positive_logs = sum(1 for log in st.session_state.audit_logs if log["feedback"] == "👍")
+
+            col1, col2 = st.columns(2)
+            col1.metric("総応答数(分母)", f"{total_logs}件")
+            col2.metric("要確認・滞留", f"{flagged_logs}件")
+            st.caption(f"高評価(👍): {positive_logs}件 / ブロック・エラーもすべて分母に含めて集計")
+
+            if st.session_state.audit_logs:
+                # スマホ上でも直接スクロールしてログを確認できるテーブル表示
+                st.dataframe(st.session_state.audit_logs, use_container_width=True)
+
+                output = io.StringIO()
+                output.write("\ufeff")
+                writer = csv.DictWriter(
+                    output,
+                    fieldnames=[
+                        "turn_id", "timestamp_jst", "model", "status",
+                        "risk_escalated", "feedback", "action_plan_extracted",
+                        "user_prompt_preview", "assistant_response_preview"
+                    ],
+                )
+                writer.writeheader()
+                writer.writerows(st.session_state.audit_logs)
+
+                st.download_button(
+                    label="📥 監査ログをCSVダウンロード",
+                    data=output.getvalue(),
+                    file_name=f"audit_log_{now_jst.strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+        elif admin_pass_input != "":
+            st.error("パスワードが正しくありません。")
+        else:
+            st.caption("ログおよび設定を閲覧・操作するには管理者パスワードを入力してください。")
 
 # ==========================================
-# 7. チャット描画 ＆ フィードバック記録処理
+# 7. チャット描画 ＆ スマホ最適化フィードバックボタン
 # ==========================================
 if not api_key:
-    st.info("現在準備中です。管理者の方は左メニューの「🔧 管理者・ガバナンス設定」または Secrets に API キーを設定してください。", icon="🗝️")
+    st.info("現在準備中です。管理者の方は左上の「＞」から「🔧 管理者・ガバナンス設定」を開くか、Secrets に API キーを設定してください。", icon="🗝️")
 else:
     client = genai.Client(api_key=api_key.strip())
+
+    # 初回アクセス時にスマホ画面が寂しくならないようウェルカムメッセージを表示
+    if not st.session_state.messages:
+        with st.chat_message("assistant"):
+            st.markdown("こんにちは。子育てや家庭学習のお悩み相談室です。どのようなことでも、下の入力欄からお気軽にお話しくださいね。")
 
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
@@ -292,27 +354,28 @@ else:
                 log_idx = message["log_index"]
                 if log_idx < len(st.session_state.audit_logs):
                     current_fb = st.session_state.audit_logs[log_idx]["feedback"]
-                    fb_col1, fb_col2, fb_col3 = st.columns([1, 1, 8])
-                    if fb_col1.button("👍", key=f"up_{idx}", help="役に立った"):
+                    # スマホでもボタンが潰れず横並びでタップしやすい比率に設定
+                    fb_col1, fb_col2, fb_col3 = st.columns([2, 2, 6])
+                    if fb_col1.button("👍", key=f"up_{idx}", help="役に立った", use_container_width=True):
                         st.session_state.audit_logs[log_idx]["feedback"] = "👍"
                         st.rerun()
-                    if fb_col2.button("👎", key=f"down_{idx}", help="改善が必要（監査対象として記録）"):
+                    if fb_col2.button("👎", key=f"down_{idx}", help="改善が必要", use_container_width=True):
                         st.session_state.audit_logs[log_idx]["feedback"] = "👎"
                         st.rerun()
                     if current_fb != "未評価":
-                        fb_col3.caption(f"評価記録済: {current_fb}")
+                        fb_col3.caption(f"記録済: {current_fb}")
 
-    # エスカレーション発動時はチャット下部にも案内バナーを表示
+    # エスカレーション発動時はスマホのメイン画面にも案内バナーを表示
     if st.session_state.escalation_triggered:
-        st.info(
-            "📩 **専門窓口のご案内**：ご相談内容に専門的なサポートが必要な事項が含まれているため、人間の担当窓口をご案内しております。お気軽に **櫻井（[k.sakurai@aiwa-learning.com](mailto:k.sakurai@aiwa-learning.com)）** までご連絡ください。"
+        st.error(
+            "📩 **専門窓口のご案内**\n\n"
+            "ご相談内容に専門的なサポートが必要な事項が含まれているため、人間の担当窓口をご案内しております。お気軽に **櫻井（[k.sakurai@aiwa-learning.com](mailto:k.sakurai@aiwa-learning.com)）** までご連絡ください。"
         )
 
     # ==========================================
     # 8. ユーザー入力・個人情報ブロック・Gemini API呼び出し
     # ==========================================
-    if prompt := st.chat_input("今日はどのようなご相談ですか（お子様の実名等は伏せてご入力ください）"):
-        # Step 1: Python正規表現による事前ブロック判定（確実なパターンのみ）
+    if prompt := st.chat_input("ご相談内容を入力（実名等は伏せてください）"):
         has_pii, pii_warning_msg = check_personal_info(prompt)
 
         if has_pii:
@@ -332,7 +395,6 @@ else:
                 }
             )
         else:
-            # Step 2: 事前フィルターを通過した場合
             is_high_risk = check_high_risk(prompt)
 
             st.session_state.messages.append({"role": "user", "content": prompt})
@@ -430,7 +492,6 @@ else:
                             st.error(f"**Error**: {type(e).__name__} - {str(e)}")
                             break
 
-            # Step 3: AI側が文脈から実名を検知して【個人情報ブロック】を発動した場合
             if "【個人情報ブロック】" in full_response:
                 user_msg_placeholder.empty()
                 assistant_msg_placeholder.empty()
@@ -463,7 +524,6 @@ else:
                         extracted_plan = match.group(1).strip()
                         st.session_state.action_plan = extracted_plan
 
-                # エスカレーションが発生したか判定し、発生時のみ連絡先表示フラグをONにする
                 escalated = is_high_risk or ("k.sakurai@aiwa-learning.com" in full_response)
                 if escalated:
                     st.session_state.escalation_triggered = True
